@@ -1,0 +1,115 @@
+version: "3"
+
+dotenv:
+  - ./targets/docker/.env
+
+env:
+  TARGETS_DIR: ./targets
+  SERVICES_DIR: ./services
+  SCRIPTS_DIR: ./scripts
+
+  CONTAINER_BIN: docker
+  CONTAINER_COMPOSE_BIN: " {{.CONTAINER_BIN}} compose "
+
+  CONTAINER_DIR: "{{.TARGETS_DIR}}/docker"
+  CONTAINER_FILE: "{{.CONTAINER_DIR}}/Containerfile"
+  COMPOSE_FILE: "{{.CONTAINER_DIR}}/compose.yaml"
+
+  DEPLOYMENT_ENVIRO: '{{.DEPLOYMENT_ENVIRO | default ""}}'
+  HTTP_PROXY: '{{.HTTP_PROXY | default ""}}'
+  HTTPS_PROXY: '{{.HTTPS_PROXY | default ""}}'
+
+  ENVIRO_SCRIPT: "{{.SCRIPTS_DIR}}/env.sh"
+  ENVIRO_FILE: "{{.CONTAINER_DIR}}/.env"
+
+tasks:
+  default:
+    desc: Shows this help message
+    cmds:
+      - task --list-all
+    silent: true
+
+  build-gsc:
+    desc: Build Ground Station Core
+    deps:
+      - env-create
+      - set-permissions
+    cmds:
+      - |
+        source ${ENVIRO_FILE} && \
+          ${CONTAINER_COMPOSE_BIN} -f ${COMPOSE_FILE} build nos3-gsc
+
+  build:
+    desc: Build all containers
+    deps:
+      - env-create
+      - set-permissions
+    cmds:
+      - |
+        source ${ENVIRO_FILE} && \
+          ${CONTAINER_COMPOSE_BIN} -f ${COMPOSE_FILE} build 
+
+  set-permissions:
+    desc: set filesystem permissions, needed for restricted accounts
+    cmds:
+      - find . -name '*.sh'   -exec chmod 775 {} \; # Make sure all scripts are world executable
+      - find . -name '*.py'   -exec chmod 775 {} \; # Make sure all scripts are world executable
+      - find . -name '*.json' -exec chmod 664 {} \; # Make sure all .json files are world readable
+      - find . -name '*.xml'  -exec chmod 664 {} \; # Make sure all .xml files are world readable
+
+  up:
+    desc: Bring up GSC detached state
+    deps:
+      - down
+      - env-create
+      - build
+    cmds:
+      - |
+        source ${ENVIRO_FILE} && \
+          ${CONTAINER_COMPOSE_BIN} --env-file ${ENVIRO_FILE} -f ${COMPOSE_FILE} up -d --force-recreate --remove-orphans
+    silent: true
+
+  down:
+    desc: Bring down gsc
+    cmds:
+      - |
+        ${CONTAINER_COMPOSE_BIN} -f ${COMPOSE_FILE} down --remove-orphans || true
+
+  clean-containers:
+    desc: clean images, cache, volumes, and networks
+    deps:
+      - down
+    cmds:
+      - yes | ${CONTAINER_BIN} image prune --filter "dangling=true"
+      - yes | ${CONTAINER_BIN} system prune -a
+      - yes | ${CONTAINER_BIN} volume prune
+      - yes | ${CONTAINER_BIN} network prune
+
+  purge-containers:
+    desc: "WARNING: purge docker/podman images, cache, volumes, and networks"
+    cmds:
+      - task down || true
+      - yes | ${CONTAINER_BIN} image prune --filter "dangling=true" || true
+      - yes | ${CONTAINER_BIN} system prune -a || true
+      - yes | ${CONTAINER_BIN} volume prune || true
+      - yes | ${CONTAINER_BIN} network prune || true
+      - echo
+    silent: true
+
+  env-create:
+    desc: Create .env file from env.sh script
+    cmds:
+      - |
+        ${ENVIRO_SCRIPT} > ${ENVIRO_FILE}
+
+  install-lazydocker:
+    desc: Install lazydocker CLI tool (to view logs, etc)
+    cmds:
+      - |
+        curl --silent https://raw.githubusercontent.com/jesseduffield/lazydocker/master/scripts/install_update_linux.sh | bash
+      - |
+        echo; echo "don't forget to add: ${HOME}/.local/bin:${PATH} to your ~/.bashrc or ~/.zshrc"; echo
+      - |
+        echo "watch a Lazydocker demo here: https://www.youtube.com/watch?v=NICqQPxwJWw"; echo
+    silent: true
+

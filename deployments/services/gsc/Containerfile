@@ -1,0 +1,82 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+ARG gsc_USER=gsc
+
+ENV gsc_USER=${gsc_USER}
+
+#------------------------------------------------------------------------------
+# Tools
+#------------------------------------------------------------------------------
+RUN apt-get update && \
+  apt-get install -y sudo git curl wget vim gcc make cmake tmux tree python3 pip && \
+  apt-get install -y iputils-ping dnsutils lsof net-tools tshark jq && \
+  apt-get install -y libgcrypt20-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN git config --global http.sslVerify false
+
+#------------------------------------------------------------------------------
+# Create a new user named ${NOS3_USER} with a home directory
+#------------------------------------------------------------------------------
+RUN useradd -m ${gsc_USER}
+RUN adduser ${gsc_USER} sudo
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+#------------------------------------------------------------------------------
+# Install gsc dependencies
+#------------------------------------------------------------------------------
+RUN apt-get update && \
+  apt-get install -y libjson-c-dev libhamlib-utils msmtp msmtp-mta libxmlrpc-core-c3-dev libconfig-dev  && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+#-- Install libev ---
+RUN apt-get update && \
+  apt-get install -y libev-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+#-- Clone, Compile and Install libpredict ---
+WORKDIR /opt/gsc
+RUN git clone https://github.com/la1k/libpredict.git 
+
+WORKDIR /opt/gsc/libpredict
+RUN mkdir build && \
+    cd build && \
+    cmake ..
+
+WORKDIR /opt/gsc/libpredict/build
+RUN make clean && \
+    make && \
+    make install
+
+#--- Clone, Compile and Install ISU GRS ---
+WORKDIR /opt/gsc/
+RUN git clone https://github.com/skypodolsky/isu_ground_station.git
+
+WORKDIR /opt/gsc/isu_ground_station
+
+# to correct compilation errors, copy updated source files
+COPY ./src/sat.h  ./src/sat.h
+COPY ./src/main.c ./src/main.c
+
+RUN mkdir build && \
+  cd build && \
+  cmake .. 
+  
+WORKDIR /opt/gsc/isu_ground_station/build
+RUN make clean && \
+  make && \
+  make install
+
+WORKDIR /opt/gsc
+
+#------------------------------------------------------------------------------
+# Setup Entrypoint
+#------------------------------------------------------------------------------
+COPY entrypoint.sh /entrypoint.sh
+
+CMD ["/entrypoint.sh"]

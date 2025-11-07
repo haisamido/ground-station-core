@@ -1,0 +1,32 @@
+
+services:
+  nos3-gsc:
+    image: nos3-gsc:dev
+
+    env_file:
+      - .env
+
+    build:
+      context: ../../services/gsc
+      dockerfile: Containerfile
+      args:
+        DEPLOYMENT_ENVIRO: ${DEPLOYMENT_ENVIRO}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+        HTTP_PROXY: ${HTTP_PROXY}
+        NO_PROXY: ${NO_PROXY}
+
+    # healthcheck:
+    #   test: ["CMD-SHELL", "/usr/bin/pgrep 42"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    attach: true
+    container_name: sc01-gsc
+    hostname: sc01-gsc
+    working_dir: "/opt/gsc/"
+    command: '/entrypoint.sh'
+    volumes:
+      - ${PWD}/services/gsc/entrypoint.sh:/entrypoint.sh
+    ports:
+      - "127.0.0.1:38080:8080"
+      - "127.0.0.1:38081:8081"
